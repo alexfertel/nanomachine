@@ -6,6 +6,7 @@
 //! specific states or for any transition, and trigger events with optional
 //! payloads.
 #![warn(clippy::perf, clippy::pedantic, missing_docs)]
+#![no_std]
 
 extern crate alloc;
 
@@ -212,7 +213,12 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::Cell;
+    use alloc::{
+        rc::Rc,
+        string::{String, ToString},
+        vec::Vec,
+    };
+    use core::cell::Cell;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     enum TestState {
@@ -235,7 +241,7 @@ mod tests {
 
         m.when_iter(
             TestEvent::Start,
-            vec![
+            [
                 (TestState::Idle, TestState::Running),
                 (TestState::Stopped, TestState::Running),
             ],
@@ -336,7 +342,7 @@ mod tests {
     fn triggerable_events() {
         let m = create_machine();
         let triggerable: Vec<_> = m.triggerable_events().cloned().collect();
-        assert_eq!(triggerable, vec![TestEvent::Start]);
+        assert_eq!(triggerable.as_slice(), &[TestEvent::Start]);
     }
 
     #[test]
