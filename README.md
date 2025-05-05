@@ -1,10 +1,10 @@
 # `nanomachine`
 
 A minimal, flexible, and generic finite state machine (FSM) implementation in
-Rust. Inspired by [MicroMachine](https://github.com/piotrmurach/micromachine),
-this crate provides core FSM functionality with minimal boilerplate.
+Rust, inspired by [MicroMachine](https://github.com/piotrmurach/micromachine).
 
----
+No dependencies, `no_std` friendly, arbitrary state types with events and
+callbacks.
 
 ## Installation
 
@@ -15,14 +15,6 @@ Add this crate to your `Cargo.toml`:
 nanomachine = "0.1"
 ```
 
-Then import it in your code:
-
-```rust
-use nanomachine::Machine;
-```
-
----
-
 ## Usage
 
 ```rust
@@ -30,46 +22,40 @@ use nanomachine::Machine;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum State {
-    Locked,
-    Unlocked,
+  Locked,
+  Unlocked,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum Event {
-    InsertCoin,
-    TurnKnob,
+  InsertCoin,
+  TurnKnob,
 }
 
 fn main() {
-    // Create a new machine starting in the Locked state
-    let mut fsm = Machine::new(State::Locked);
+  let mut fsm = Machine::new(State::Locked);
 
-    // Define transitions
-    fsm.when(Event::InsertCoin, State::Locked.clone(), State::Unlocked);
-    fsm.when(Event::TurnKnob, State::Unlocked.clone(), State::Locked);
+  // Define transitions.
+  fsm.when(Event::InsertCoin, State::Locked, State::Unlocked);
+  fsm.when(Event::TurnKnob, State::Unlocked, State::Locked);
 
-    // Register a callback when entering Unlocked
-    fsm.on(State::Unlocked.clone(), |event, _payload: &()| {
-        println!("Unlocked by event: {:?}", event);
-    });
+  // Register a callback when entering Unlocked.
+  fsm.on(State::Unlocked, |event, _payload: &()| {
+    println!("Unlocked by event: {:?}", event);
+  });
 
-    // Trigger events
-    assert!(fsm.trigger(&Event::InsertCoin));
-    assert_eq!(*fsm.state(), State::Unlocked);
+  assert!(fsm.trigger(&Event::InsertCoin).is_ok());
+  assert_eq!(*fsm.state(), State::Unlocked);
 
-    assert!(fsm.trigger(&Event::TurnKnob));
-    assert_eq!(*fsm.state(), State::Locked);
-}
-```
+  assert!(fsm.trigger(&Event::TurnKnob).is_ok());
+  assert_eq!(*fsm.state(), State::Locked);
 
-### Triggering with payloads
-
-```rust
-// You can attach data to transitions
-fsm.on(State::Unlocked.clone(), |event, amount: &u32| {
+  // You can attach data to transitions.
+  fsm.on(State::Unlocked, |event, amount: &u32| {
     println!("Unlocked after {} cents by {:?}", amount, event);
-});
+  });
 
-// Pass a payload when triggering
-fsm.trigger_with(&Event::InsertCoin, &50u32);
+  // Pass a payload when triggering.
+  fsm.trigger_with(&Event::InsertCoin, &50u32);
+}
 ```

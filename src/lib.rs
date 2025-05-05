@@ -5,6 +5,54 @@
 //! transitions between states based on events, register callbacks for entering
 //! specific states or for any transition, and trigger events with optional
 //! payloads.
+//!
+//! WARN: `Machine` is *not* thread-safe. This may change in later versions.
+//!
+//! # Examples
+//!
+//! ```rust
+//! use nanomachine::Machine;
+//!
+//! #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+//! enum State {
+//!   Locked,
+//!   Unlocked,
+//! }
+//!
+//! #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+//! enum Event {
+//!   InsertCoin,
+//!   TurnKnob,
+//! }
+//!
+//! fn main() {
+//!   let mut fsm = Machine::new(State::Locked);
+//!
+//!   // Define transitions.
+//!   fsm.when(Event::InsertCoin, State::Locked, State::Unlocked);
+//!   fsm.when(Event::TurnKnob, State::Unlocked, State::Locked);
+//!
+//!   // Register a callback when entering Unlocked.
+//!   fsm.on(State::Unlocked, |event, _payload: &()| {
+//!     println!("Unlocked by event: {:?}", event);
+//!   });
+//!
+//!   assert!(fsm.trigger(&Event::InsertCoin).is_ok());
+//!   assert_eq!(*fsm.state(), State::Unlocked);
+//!
+//!   assert!(fsm.trigger(&Event::TurnKnob).is_ok());
+//!   assert_eq!(*fsm.state(), State::Locked);
+//!
+//!   // You can attach data to transitions.
+//!   fsm.on(State::Unlocked, |event, amount: &u32| {
+//!     println!("Unlocked after {} cents by {:?}", amount, event);
+//!   });
+//!
+//!   // Pass a payload when triggering.
+//!   fsm.trigger_with(&Event::InsertCoin, &50u32);
+//! }
+//! ```
+
 #![warn(clippy::perf, clippy::pedantic, missing_docs)]
 #![no_std]
 
@@ -14,6 +62,36 @@ use alloc::{rc::Rc, vec::Vec};
 use core::{any::Any, hash::Hash};
 use hashbrown::{HashMap, HashSet};
 
+/// Errors that can occur when triggering events on a [`Machine`].
+///
+/// This error type is returned by [`Machine::trigger`] and
+/// [`Machine::trigger_with`] to indicate invalid operations.
+#[derive(Debug, Clone, Eq, Hash, PartialEq)]
+pub enum MachineError {
+    /// The specified event is not defined in the state machine.
+    EventInvalid,
+    /// The specified event is defined for this machine, but not valid from the current state.
+    StateInvalid,
+}
+
+impl core::fmt::Display for MachineError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            MachineError::EventInvalid => write!(
+                f,
+                "The specified event is not defined in this state machine"
+            ),
+            MachineError::StateInvalid => write!(f, "The event is not valid for the current state"),
+        }
+    }
+}
+
+impl core::error::Error for MachineError {}
+
+/// A specialized `Result` type for operations on a [`Machine`].
+///
+/// This is an alias for `core::result::Result<T, MachineError>`.
+pub type MachineResult<T> = core::result::Result<T, MachineError>;
 /// A trigger key for callbacks, either targeting a specific state or any state.
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 enum Trigger<S> {
@@ -113,8 +191,7 @@ where
     where
         I: IntoIterator<Item = (S, S)>,
     {
-        let entry = self.transitions.entry(event).or_default();
-        entry.extend(mapping);
+        self.transitions.entry(event).or_default().extend(mapping);
     }
 
     /// Internal helper to wrap a callback that expects a specific payload type
@@ -164,39 +241,55 @@ where
             .push(callback);
     }
 
-    /// Trigger `event` without a payload.
+    /// Trigger the given `event` on the machine without any payload.
     ///
-    /// Returns `true` if a valid transition occurred, `false` otherwise.
-    pub fn trigger(&mut self, event: &E) -> bool {
+    /// If the event is defined for the current state, the machine will
+    /// transition to the corresponding new state and invoke any registered
+    /// callbacks.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`MachineError::EventInvalid`] if the event is not defined
+    ///   in this state machine.
+    /// - Returns [`MachineError::StateInvalid`] if the event has no transition
+    ///   defined for the machine's current state.
+    #[inline]
+    pub fn trigger(&mut self, event: &E) -> Result<(), MachineError> {
         self.trigger_with(event, &())
     }
 
-    /// Trigger `event` with a payload of type `P`.
+    /// Trigger the given `event` on the machine with an associated payload.
     ///
-    /// Returns `true` if a valid transition occurred and callbacks were
-    /// invoked, or `false` if no transition was defined for the current state
-    /// and event.
-    pub fn trigger_with<P>(&mut self, event: &E, payload: &P) -> bool
+    /// The payload will be provided to callbacks that accept the payload type
+    /// `P`. If the event is defined for the current state, the machine will
+    ///  perform the transition and invoke any matching callbacks.
+    ///
+    /// # Errors
+    ///
+    /// - Returns [`MachineError::EventInvalid`] if the event is not defined
+    ///   in this state machine.
+    /// - Returns [`MachineError::StateInvalid`] if no transition is defined for
+    ///   the machine's current state with the given event.
+    pub fn trigger_with<P>(&mut self, event: &E, payload: &P) -> Result<(), MachineError>
     where
         P: 'static,
     {
-        let maybe_state = self
-            .transitions
-            .get(event)
-            .map(|state_map| state_map.get(&self.state));
-        let Some(Some(next)) = maybe_state else {
-            return false;
+        let Some(state_map) = self.transitions.get(event) else {
+            return Err(MachineError::EventInvalid);
         };
 
-        self.state = next.clone();
+        let Some(new_state) = state_map.get(&self.state) else {
+            return Err(MachineError::StateInvalid);
+        };
 
+        self.state = new_state.clone();
         let state_cbs = self.callbacks.get(&Trigger::State(self.state.clone()));
         let any_cbs = self.callbacks.get(&Trigger::AnyState);
         for cb in state_cbs.into_iter().chain(any_cbs.into_iter()).flatten() {
             cb(event.clone(), payload as &dyn Any);
         }
 
-        true
+        Ok(())
     }
 }
 
@@ -263,14 +356,17 @@ mod tests {
     #[test]
     fn valid_transition() {
         let mut m = create_machine();
-        assert!(m.trigger(&TestEvent::Start));
+        assert!(m.trigger(&TestEvent::Start).is_ok());
         assert_eq!(*m.state(), TestState::Running);
     }
 
     #[test]
     fn invalid_transition() {
         let mut m = create_machine();
-        assert!(!m.trigger(&TestEvent::Pause));
+        assert_eq!(
+            m.trigger(&TestEvent::Pause).unwrap_err(),
+            MachineError::StateInvalid
+        );
         assert_eq!(*m.state(), TestState::Idle);
     }
 
@@ -284,7 +380,7 @@ mod tests {
             cc.set(true);
         });
 
-        m.trigger(&TestEvent::Start);
+        m.trigger(&TestEvent::Start).unwrap();
         assert!(callback_called.get());
     }
 
@@ -298,8 +394,8 @@ mod tests {
             cc.set(cc.get() + 1);
         });
 
-        m.trigger(&TestEvent::Start);
-        m.trigger(&TestEvent::Pause);
+        m.trigger(&TestEvent::Start).unwrap();
+        m.trigger(&TestEvent::Pause).unwrap();
         assert_eq!(callback_count.get(), 2);
     }
 
@@ -315,7 +411,8 @@ mod tests {
             pr.set(Some(p.clone()));
         });
 
-        m.trigger_with(&TestEvent::Start, &"test payload".to_string());
+        m.trigger_with(&TestEvent::Start, &"test payload".to_string())
+            .unwrap();
         assert_eq!(payload_received.take(), Some("test payload".to_string()));
     }
 
@@ -351,7 +448,7 @@ mod tests {
         m.when(TestEvent::Start, TestState::Idle, TestState::Running);
         m.when(TestEvent::Start, TestState::Idle, TestState::Paused);
 
-        m.trigger(&TestEvent::Start);
+        m.trigger(&TestEvent::Start).unwrap();
         assert_eq!(*m.state(), TestState::Paused);
     }
 
@@ -366,7 +463,7 @@ mod tests {
         let c2 = counter.clone();
         m.on(TestState::Running, move |_, _: &()| c2.set(c2.get() + 1));
 
-        m.trigger(&TestEvent::Start);
+        m.trigger(&TestEvent::Start).unwrap();
         assert_eq!(counter.get(), 2);
     }
 
@@ -378,7 +475,7 @@ mod tests {
         let c = called.clone();
         m.on(TestState::Running, move |_, _: &()| c.set(true));
 
-        m.trigger(&TestEvent::Start);
+        m.trigger(&TestEvent::Start).unwrap();
         assert!(called.get());
     }
 
@@ -391,8 +488,8 @@ mod tests {
         let c = called.clone();
         m.on(TestState::Running, move |_, _: &String| c.set(true));
 
-        // Trigger with wrong payload type
-        m.trigger_with(&TestEvent::Start, &42i32);
+        // Trigger with wrong payload type.
+        m.trigger_with(&TestEvent::Start, &42i32).unwrap();
         assert!(!called.get());
     }
 }
