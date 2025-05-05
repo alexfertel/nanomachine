@@ -1,12 +1,11 @@
 //! A generic finite state machine implementation.
 //!
 //! This module provides a `Machine` struct that represents a finite state
-//! machine (FSM) with generic state (`S`) and event (`E`) types. You can define
-//! transitions between states based on events, register callbacks for entering
-//! specific states or for any transition, and trigger events with optional
-//! payloads.
+//! machine (FSM) with generic state (`S`) and event (`E`) types.
 //!
-//! WARN: `Machine` is *not* thread-safe. This may change in later versions.
+//! You can define transitions between states based on events, register
+//! callbacks for entering specific states or for any transition, and trigger
+//! events with optional payloads.
 //!
 //! # Examples
 //!
@@ -21,35 +20,35 @@
 //!
 //! #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 //! enum Event {
-//!   InsertCoin,
-//!   TurnKnob,
+//!     InsertCoin,
+//!     TurnKnob,
 //! }
 //!
 //! fn main() {
-//!   let mut fsm = Machine::new(State::Locked);
+//!     let mut nano = Machine::new(State::Locked);
 //!
-//!   // Define transitions.
-//!   fsm.when(Event::InsertCoin, State::Locked, State::Unlocked);
-//!   fsm.when(Event::TurnKnob, State::Unlocked, State::Locked);
+//!     // Define transitions.
+//!     nano.when(Event::InsertCoin, State::Locked, State::Unlocked);
+//!     nano.when(Event::TurnKnob, State::Unlocked, State::Locked);
 //!
-//!   // Register a callback when entering Unlocked.
-//!   fsm.on(State::Unlocked, |event, _payload: &()| {
-//!     println!("Unlocked by event: {:?}", event);
-//!   });
+//!     // Register a callback when entering Unlocked.
+//!     nano.on_enter_with(State::Unlocked, |event, _payload: &()| {
+//!         println!("Unlocked by event: {:?}", event);
+//!     });
 //!
-//!   assert!(fsm.trigger(&Event::InsertCoin).is_ok());
-//!   assert_eq!(*fsm.state(), State::Unlocked);
+//!     assert!(nano.trigger(&Event::InsertCoin).is_ok());
+//!     assert_eq!(*nano.state(), State::Unlocked);
 //!
-//!   assert!(fsm.trigger(&Event::TurnKnob).is_ok());
-//!   assert_eq!(*fsm.state(), State::Locked);
+//!     assert!(nano.trigger(&Event::TurnKnob).is_ok());
+//!     assert_eq!(*nano.state(), State::Locked);
 //!
-//!   // You can attach data to transitions.
-//!   fsm.on(State::Unlocked, |event, amount: &u32| {
-//!     println!("Unlocked after {} cents by {:?}", amount, event);
-//!   });
+//!     // You can attach data to transitions.
+//!     nano.on_enter_with(State::Unlocked, |event, amount: &u32| {
+//!         println!("Unlocked after {} cents by {:?}", amount, event);
+//!     });
 //!
-//!   // Pass a payload when triggering.
-//!   fsm.trigger_with(&Event::InsertCoin, &50u32);
+//!     // Pass a payload when triggering.
+//!     nano.trigger_with(&Event::InsertCoin, &50u32);
 //! }
 //! ```
 
@@ -58,7 +57,7 @@
 
 extern crate alloc;
 
-use alloc::{rc::Rc, vec::Vec};
+use alloc::{boxed::Box, vec::Vec};
 use core::{any::Any, hash::Hash};
 use hashbrown::{HashMap, HashSet};
 
@@ -102,14 +101,13 @@ enum Trigger<S> {
 }
 
 /// Any `Fn` that takes an event and some arbitrary payload as input.
-type Callback<E> = Rc<dyn Fn(E, &dyn Any)>;
+type Callback<E> = Box<dyn Fn(E, &dyn Any)>;
 
 /// A generic finite state machine.
 ///
 /// # Type Parameters
 /// - `S`: The state type. Must implement `Eq + Hash + Clone`.
 /// - `E`: The event type. Must implement `Eq + Hash + Clone`.
-#[derive(Clone)]
 pub struct Machine<S, E> {
     state: S,
     transitions: HashMap<E, HashMap<S, S>>,
@@ -202,18 +200,32 @@ where
         P: 'static,
         F: Fn(E, &P) + 'static,
     {
-        Rc::new(move |evt, payload| {
+        Box::new(move |evt, payload| {
             if let Some(p) = payload.downcast_ref::<P>() {
                 callback(evt, p);
             }
         })
     }
 
-    /// Register a callback to fire when entering the given `state`.
+    /// Register a callback that only cares about the event (no payload).
+    pub fn on_enter<F>(&mut self, state: S, callback: F)
+    where
+        F: Fn(E) + 'static,
+    {
+        let callback: Callback<E> = Box::new(move |evt, _payload| {
+            callback(evt);
+        });
+        self.callbacks
+            .entry(Trigger::State(state))
+            .or_default()
+            .push(callback);
+    }
+
+    /// Register a callback that expects a payload of type P.
     ///
     /// The callback takes the triggering event and a payload of type `P`. It
     /// will only be invoked if the payload downcasts to `P` successfully.
-    pub fn on<P, F>(&mut self, state: S, callback: F)
+    pub fn on_enter_with<P, F>(&mut self, state: S, callback: F)
     where
         P: 'static,
         F: Fn(E, &P) + 'static,
@@ -227,9 +239,28 @@ where
 
     /// Register a callback to fire on any state transition.
     ///
-    /// Works similarly to `on`, but the callback runs regardless of the
-    /// specific state.
-    pub fn on_any<P, F>(&mut self, callback: F)
+    /// Works similarly to `on_enter`, but the callback runs regardless of the
+    /// specific state entered.
+    pub fn on_transition<F>(&mut self, callback: F)
+    where
+        F: Fn(E) + 'static + Clone,
+    {
+        let callback: Callback<E> = Box::new(move |evt, _payload| {
+            callback(evt);
+        });
+        self.callbacks
+            .entry(Trigger::AnyState)
+            .or_default()
+            .push(callback);
+    }
+
+    /// Register a callback to fire on any state transition with a payload of
+    /// type `P`.
+    ///
+    /// Works similarly to `on_enter_with`, but the callback runs regardless of
+    /// the specific state, and only if the payload downcasts to `P`
+    /// successfully.
+    pub fn on_transition_with<P, F>(&mut self, callback: F)
     where
         P: 'static,
         F: Fn(E, &P) + 'static + Clone,
@@ -376,7 +407,7 @@ mod tests {
         let callback_called = Rc::new(Cell::new(false));
 
         let cc = callback_called.clone();
-        m.on(TestState::Running, move |_, _: &()| {
+        m.on_enter_with(TestState::Running, move |_, _: &()| {
             cc.set(true);
         });
 
@@ -390,7 +421,7 @@ mod tests {
         let callback_count = Rc::new(Cell::new(0));
 
         let cc = callback_count.clone();
-        m.on_any(move |_, _: &()| {
+        m.on_transition(move |_| {
             cc.set(cc.get() + 1);
         });
 
@@ -407,7 +438,7 @@ mod tests {
         m.when(TestEvent::Start, TestState::Idle, TestState::Running);
 
         let pr = payload_received.clone();
-        m.on(TestState::Running, move |_, p: &String| {
+        m.on_enter_with(TestState::Running, move |_, p: &String| {
             pr.set(Some(p.clone()));
         });
 
@@ -458,10 +489,10 @@ mod tests {
         let counter = Rc::new(Cell::new(0));
 
         let c1 = counter.clone();
-        m.on(TestState::Running, move |_, _: &()| c1.set(c1.get() + 1));
+        m.on_enter_with(TestState::Running, move |_, _: &()| c1.set(c1.get() + 1));
 
         let c2 = counter.clone();
-        m.on(TestState::Running, move |_, _: &()| c2.set(c2.get() + 1));
+        m.on_enter_with(TestState::Running, move |_, _: &()| c2.set(c2.get() + 1));
 
         m.trigger(&TestEvent::Start).unwrap();
         assert_eq!(counter.get(), 2);
@@ -473,7 +504,7 @@ mod tests {
         let called = Rc::new(Cell::new(false));
 
         let c = called.clone();
-        m.on(TestState::Running, move |_, _: &()| c.set(true));
+        m.on_enter_with(TestState::Running, move |_, _: &()| c.set(true));
 
         m.trigger(&TestEvent::Start).unwrap();
         assert!(called.get());
@@ -486,10 +517,109 @@ mod tests {
 
         let called = Rc::new(Cell::new(false));
         let c = called.clone();
-        m.on(TestState::Running, move |_, _: &String| c.set(true));
+        m.on_enter_with(TestState::Running, move |_, _: &String| c.set(true));
 
         // Trigger with wrong payload type.
         m.trigger_with(&TestEvent::Start, &42i32).unwrap();
+        assert!(!called.get());
+    }
+
+    #[test]
+    fn on_no_payload_callback() {
+        let mut m = create_machine();
+        let fired = Rc::new(Cell::new(None));
+        let fired_clone = fired.clone();
+        // Register a no-payload callback for entering Running.
+        m.on_enter(TestState::Running, move |evt| {
+            fired_clone.set(Some(evt.clone()));
+        });
+        // Trigger Idle -> Running.
+        m.trigger(&TestEvent::Start).unwrap();
+        // Callback should have been called with Start event.
+        assert_eq!(fired.take(), Some(TestEvent::Start));
+    }
+
+    #[test]
+    fn on_no_payload_not_called_in_other_state() {
+        let mut m = create_machine();
+        let called = Rc::new(Cell::new(false));
+        let called_clone = called.clone();
+        // Register callback for Paused, but machine will go to Running.
+        m.on_enter(TestState::Paused, move |_| {
+            called_clone.set(true);
+        });
+        // Trigger Idle -> Running.
+        m.trigger(&TestEvent::Start).unwrap();
+        // Callback for Paused should not fire.
+        assert!(!called.get());
+    }
+
+    #[test]
+    fn callback_with_payload_not_called_when_no_payload() {
+        let mut m = create_machine();
+        let called = Rc::new(Cell::new(false));
+        let called_clone = called.clone();
+        // Register a payload callback for entering Running.
+        m.on_enter_with(TestState::Running, move |_, _payload: &usize| {
+            called_clone.set(true);
+        });
+        // Trigger Idle -> Running.
+        m.trigger(&TestEvent::Start).unwrap();
+        // Callback should have been called with Start event.
+        assert!(!called.take());
+    }
+
+    #[test]
+    fn callback_with_no_payload_called_when_payload() {
+        let mut m = create_machine();
+        let called = Rc::new(Cell::new(false));
+        let called_clone = called.clone();
+        // Register a payload callback for entering Running.
+        m.on_enter(TestState::Running, move |_| {
+            called_clone.set(true);
+        });
+        // Trigger Idle -> Running.
+        m.trigger_with(&TestEvent::Start, &10usize).unwrap();
+        // Callback should have been called with Start event.
+        assert!(called.take());
+    }
+
+    #[test]
+    fn any_state_with_payload_callback() {
+        let mut m = create_machine();
+        let count = Rc::new(Cell::new(0));
+        let last = Rc::new(Cell::new(0u32));
+        let ccount = count.clone();
+        let clast = last.clone();
+        // Register an on_any_with callback for u32 payloads.
+        m.on_transition_with(move |_evt, amt: &u32| {
+            ccount.set(ccount.get() + 1);
+            clast.set(*amt);
+        });
+
+        // Trigger with matching payloads.
+        m.trigger_with(&TestEvent::Start, &5u32).unwrap();
+        m.trigger_with(&TestEvent::Pause, &10u32).unwrap();
+
+        // The callback should have fired twice, and last payload should be 10.
+        assert_eq!(count.get(), 2);
+        assert_eq!(last.get(), 10);
+    }
+
+    #[test]
+    fn any_state_with_wrong_payload_not_called() {
+        let mut m = create_machine();
+        let called = Rc::new(Cell::new(false));
+        let c = called.clone();
+        // Register an on_any_with callback expecting String payloads.
+        m.on_transition_with(move |_, _: &String| {
+            c.set(true);
+        });
+
+        // Trigger with a u32 payload instead.
+        m.trigger_with(&TestEvent::Start, &5u32).unwrap();
+
+        // The callback should not fire for the wrong payload type.
         assert!(!called.get());
     }
 }
