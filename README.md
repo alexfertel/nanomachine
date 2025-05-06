@@ -221,3 +221,32 @@ nano.trigger_with(&"turn knob", &"voucher".to_string())
 //   Global - saw 50 cents via "insert coin"
 nano.trigger_with(&"insert coin", &50u32).unwrap();
 ```
+
+## Examples
+
+You can find more examples in the [examples directory][./examples].
+
+## Contributing
+
+Please refer to [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Publishing
+
+These are the current steps taken to publish:
+
+- Bump the version field in [Cargo.toml](./Cargo.toml).
+- Update the [CHANGELOG.md](./CHANGELOG.md) file with
+  `git cliff -o CHANGELOG.md`. This step includes setting the proper header for
+  the latest tag.
+- Commit the changes.
+- Run `cargo publish --dry-run` to make sure that everything looks good.
+- Create the corresponding git tag named after the version.
+- Push to origin.
+- Run `cargo publish`.
+
+## License
+
+This software is licensed under:
+
+- MIT license ([LICENSE-MIT](LICENSE-MIT) or
+  https://opensource.org/licenses/MIT).

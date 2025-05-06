@@ -2,6 +2,18 @@
 name = "nanomachine"
 version = "0.1.0"
 edition = "2024"
+authors = ["Alexander Gonzalez <alexfertel97@gmail.com>"]
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/alexfertel/nanomachine"
+homepage = "https://github.com/alexfertel/nanomachine"
+documentation = "https://github.com/alexfertel/nanomachine"
+description = """
+Minimal State Machines
+"""
+keywords = ["no-std", "state", "fsm"]
+categories = ["simulation", "no-std"]
+exclude = ["/.github/*"]
 
 [dependencies]
 hashbrown = { version = "0.15.3" }
