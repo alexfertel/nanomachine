@@ -8,9 +8,20 @@
 # `nanomachine`
 
 A minimal, flexible, and generic finite state machine (FSM) implementation in
-Rust, inspired on [MicroMachine](https://github.com/piotrmurach/micromachine).
+Rust, inspired by [MicroMachine](https://github.com/piotrmurach/micromachine).
 
-No dependencies, `no_std`, arbitrary state types, events and callbacks.
+No dependencies, `no_std`, arbitrary state types, events, and callbacks. The API
+is intentionally small and is planned to remain as such. They are state
+machines, and that's it.
+
+If you need to implement an FSM for a piece of application logic and don’t have
+time to learn a DSL or design many types, `nanomachine` lets you get the job
+done with a few lines.
+
+If you need guarded transitions or hierarchical states this crate is not for
+you.
+
+Note that machines are not thread-safe; this may change in future versions.
 
 ## Installation
 
@@ -22,6 +33,18 @@ nanomachine = "0.1"
 ```
 
 ## Usage
+
+This state machine:
+
+```
+╔══════════╗    Insert Coin    ╔════════════╗
+║          ║══════════════════>║            ║
+║  Locked  ║                   ║  Unlocked  ║
+║          ║<══════════════════║            ║
+╚══════════╝     Turn Knob     ╚════════════╝
+```
+
+would be represented as:
 
 ```rust
 use nanomachine::Machine;
