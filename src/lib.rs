@@ -32,7 +32,7 @@
 //!     nano.when(Event::TurnKnob, State::Unlocked, State::Locked);
 //!
 //!     // Register a callback when entering Unlocked.
-//!     nano.on_enter_with(State::Unlocked, |event, _payload: &()| {
+//!     nano.on_enter(State::Unlocked, |event| {
 //!         println!("Unlocked by event: {:?}", event);
 //!     });
 //!
