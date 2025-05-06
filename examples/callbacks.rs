@@ -36,8 +36,7 @@ fn main() {
     //   Locked via "turn knob"
     //   Global - event "turn knob"
     //   Global - saw "voucher" via "turn knob"
-    nano.trigger_with(&"turn knob", &"voucher".to_string())
-        .unwrap();
+    nano.trigger_with(&"turn knob", &"voucher".to_string()).unwrap();
 
     // Prints:
     //   Unlocked via "insert coin"

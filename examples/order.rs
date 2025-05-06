@@ -28,11 +28,7 @@ fn main() {
     // Define transitions one-by-one.
     nano.when(OrderEvent::Pay, OrderState::Created, OrderState::Paid);
     nano.when(OrderEvent::Ship, OrderState::Paid, OrderState::Shipped);
-    nano.when(
-        OrderEvent::Deliver,
-        OrderState::Shipped,
-        OrderState::Delivered,
-    );
+    nano.when(OrderEvent::Deliver, OrderState::Shipped, OrderState::Delivered);
 
     // Define Cancel for both Created and Paid using when_iter.
     nano.when_iter(
@@ -81,14 +77,8 @@ fn main() {
         println!("🌐 Global saw string payload {:?}: {}", evt, text);
     });
     // Inspect machine metadata:
-    println!(
-        "All states: {:?}",
-        nano.states().cloned().collect::<Vec<_>>()
-    );
-    println!(
-        "All events: {:?}",
-        nano.events().cloned().collect::<Vec<_>>()
-    );
+    println!("All states: {:?}", nano.states().cloned().collect::<Vec<_>>());
+    println!("All events: {:?}", nano.events().cloned().collect::<Vec<_>>());
     println!(
         "Triggerable now ({:?}): {:?}",
         nano.state(),
@@ -104,8 +94,7 @@ fn main() {
     nano.trigger_with(&OrderEvent::Ship, &"TRACK1234".to_string())
         .expect("Should transition to Shipped");
     //    Deliver without payload.
-    nano.trigger(&OrderEvent::Deliver)
-        .expect("Should transition to Delivered");
+    nano.trigger(&OrderEvent::Deliver).expect("Should transition to Delivered");
     println!("\nFinal state: {:?}\n", nano.state());
 
     // Attempt an invalid transition (Pay after Delivered).
@@ -128,8 +117,11 @@ fn main() {
         println!("Order #2 cancelled reason: {}", reason);
     });
     // Cancel with a payload.
-    nano.trigger_with(&OrderEvent::Cancel, &"Customer changed mind".to_string())
-        .unwrap();
+    nano.trigger_with(
+        &OrderEvent::Cancel,
+        &"Customer changed mind".to_string(),
+    )
+    .unwrap();
 
     println!("Order #2 final: {:?}", nano.state());
 }

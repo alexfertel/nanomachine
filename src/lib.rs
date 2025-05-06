@@ -24,32 +24,30 @@
 //!     TurnKnob,
 //! }
 //!
-//! fn main() {
-//!     let mut nano = Machine::new(State::Locked);
+//! let mut nano = Machine::new(State::Locked);
 //!
-//!     // Define transitions.
-//!     nano.when(Event::InsertCoin, State::Locked, State::Unlocked);
-//!     nano.when(Event::TurnKnob, State::Unlocked, State::Locked);
+//! // Define transitions.
+//! nano.when(Event::InsertCoin, State::Locked, State::Unlocked);
+//! nano.when(Event::TurnKnob, State::Unlocked, State::Locked);
 //!
-//!     // Register a callback when entering Unlocked.
-//!     nano.on_enter(State::Unlocked, |event| {
-//!         println!("Unlocked by event: {:?}", event);
-//!     });
+//! // Register a callback when entering Unlocked.
+//! nano.on_enter(State::Unlocked, |event| {
+//!     println!("Unlocked by event: {:?}", event);
+//! });
 //!
-//!     assert!(nano.trigger(&Event::InsertCoin).is_ok());
-//!     assert_eq!(*nano.state(), State::Unlocked);
+//! assert!(nano.trigger(&Event::InsertCoin).is_ok());
+//! assert_eq!(*nano.state(), State::Unlocked);
 //!
-//!     assert!(nano.trigger(&Event::TurnKnob).is_ok());
-//!     assert_eq!(*nano.state(), State::Locked);
+//! assert!(nano.trigger(&Event::TurnKnob).is_ok());
+//! assert_eq!(*nano.state(), State::Locked);
 //!
-//!     // You can attach data to transitions.
-//!     nano.on_enter_with(State::Unlocked, |event, amount: &u32| {
-//!         println!("Unlocked after {} cents by {:?}", amount, event);
-//!     });
+//! // You can attach data to transitions.
+//! nano.on_enter_with(State::Unlocked, |event, amount: &u32| {
+//!     println!("Unlocked after {} cents by {:?}", amount, event);
+//! });
 //!
-//!     // Pass a payload when triggering.
-//!     nano.trigger_with(&Event::InsertCoin, &50u32);
-//! }
+//! // Pass a payload when triggering.
+//! nano.trigger_with(&Event::InsertCoin, &50u32);
 //! ```
 
 #![warn(clippy::perf, clippy::pedantic, missing_docs)]
@@ -59,6 +57,7 @@ extern crate alloc;
 
 use alloc::{boxed::Box, vec::Vec};
 use core::{any::Any, hash::Hash};
+
 use hashbrown::{HashMap, HashSet};
 
 /// Errors that can occur when triggering events on a [`Machine`].
@@ -69,7 +68,8 @@ use hashbrown::{HashMap, HashSet};
 pub enum MachineError {
     /// The specified event is not defined in the state machine.
     EventInvalid,
-    /// The specified event is defined for this machine, but not valid from the current state.
+    /// The specified event is defined for this machine, but not valid from the
+    /// current state.
     StateInvalid,
 }
 
@@ -80,7 +80,9 @@ impl core::fmt::Display for MachineError {
                 f,
                 "The specified event is not defined in this state machine"
             ),
-            MachineError::StateInvalid => write!(f, "The event is not valid for the current state"),
+            MachineError::StateInvalid => {
+                write!(f, "The event is not valid for the current state")
+            }
         }
     }
 }
@@ -176,10 +178,7 @@ where
     /// Multiple calls to `when` for the same `(event, state)` will overwrite
     /// the previous `new_state`.
     pub fn when(&mut self, event: E, state: S, new_state: S) {
-        self.transitions
-            .entry(event)
-            .or_default()
-            .insert(state, new_state);
+        self.transitions.entry(event).or_default().insert(state, new_state);
     }
 
     /// Define multiple transitions for a single event.
@@ -215,10 +214,7 @@ where
         let callback: Callback<E> = Box::new(move |evt, _payload| {
             callback(evt);
         });
-        self.callbacks
-            .entry(Trigger::State(state))
-            .or_default()
-            .push(callback);
+        self.callbacks.entry(Trigger::State(state)).or_default().push(callback);
     }
 
     /// Register a callback that expects a payload of type P.
@@ -231,10 +227,7 @@ where
         F: Fn(E, &P) + 'static,
     {
         let callback = Self::wrap_callback(callback);
-        self.callbacks
-            .entry(Trigger::State(state))
-            .or_default()
-            .push(callback);
+        self.callbacks.entry(Trigger::State(state)).or_default().push(callback);
     }
 
     /// Register a callback to fire on any state transition.
@@ -248,10 +241,7 @@ where
         let callback: Callback<E> = Box::new(move |evt, _payload| {
             callback(evt);
         });
-        self.callbacks
-            .entry(Trigger::AnyState)
-            .or_default()
-            .push(callback);
+        self.callbacks.entry(Trigger::AnyState).or_default().push(callback);
     }
 
     /// Register a callback to fire on any state transition with a payload of
@@ -266,10 +256,7 @@ where
         F: Fn(E, &P) + 'static + Clone,
     {
         let callback = Self::wrap_callback(callback);
-        self.callbacks
-            .entry(Trigger::AnyState)
-            .or_default()
-            .push(callback);
+        self.callbacks.entry(Trigger::AnyState).or_default().push(callback);
     }
 
     /// Trigger the given `event` on the machine without any payload.
@@ -280,8 +267,8 @@ where
     ///
     /// # Errors
     ///
-    /// - Returns [`MachineError::EventInvalid`] if the event is not defined
-    ///   in this state machine.
+    /// - Returns [`MachineError::EventInvalid`] if the event is not defined in
+    ///   this state machine.
     /// - Returns [`MachineError::StateInvalid`] if the event has no transition
     ///   defined for the machine's current state.
     #[inline]
@@ -297,11 +284,15 @@ where
     ///
     /// # Errors
     ///
-    /// - Returns [`MachineError::EventInvalid`] if the event is not defined
-    ///   in this state machine.
+    /// - Returns [`MachineError::EventInvalid`] if the event is not defined in
+    ///   this state machine.
     /// - Returns [`MachineError::StateInvalid`] if no transition is defined for
     ///   the machine's current state with the given event.
-    pub fn trigger_with<P>(&mut self, event: &E, payload: &P) -> Result<(), MachineError>
+    pub fn trigger_with<P>(
+        &mut self,
+        event: &E,
+        payload: &P,
+    ) -> Result<(), MachineError>
     where
         P: 'static,
     {
@@ -336,13 +327,14 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use alloc::{
         rc::Rc,
         string::{String, ToString},
         vec::Vec,
     };
     use core::cell::Cell;
+
+    use super::*;
 
     #[derive(Debug, Clone, PartialEq, Eq, Hash)]
     enum TestState {
@@ -442,8 +434,7 @@ mod tests {
             pr.set(Some(p.clone()));
         });
 
-        m.trigger_with(&TestEvent::Start, &"test payload".to_string())
-            .unwrap();
+        m.trigger_with(&TestEvent::Start, &"test payload".to_string()).unwrap();
         assert_eq!(payload_received.take(), Some("test payload".to_string()));
     }
 
@@ -489,10 +480,14 @@ mod tests {
         let counter = Rc::new(Cell::new(0));
 
         let c1 = counter.clone();
-        m.on_enter_with(TestState::Running, move |_, _: &()| c1.set(c1.get() + 1));
+        m.on_enter_with(TestState::Running, move |_, _: &()| {
+            c1.set(c1.get() + 1)
+        });
 
         let c2 = counter.clone();
-        m.on_enter_with(TestState::Running, move |_, _: &()| c2.set(c2.get() + 1));
+        m.on_enter_with(TestState::Running, move |_, _: &()| {
+            c2.set(c2.get() + 1)
+        });
 
         m.trigger(&TestEvent::Start).unwrap();
         assert_eq!(counter.get(), 2);
