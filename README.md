@@ -8,7 +8,7 @@
 # `nanomachine`
 
 A minimal, flexible, and generic finite state machine (FSM) implementation in
-Rust, inspired by [MicroMachine](https://github.com/piotrmurach/micromachine).
+Rust, inspired by [MicroMachine](https://github.com/soveran/micromachine).
 
 No dependencies, `no_std`, arbitrary state types, events, and callbacks. The API
 is intentionally small and is planned to remain as such. They are state
