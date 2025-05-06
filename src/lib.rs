@@ -56,7 +56,11 @@
 extern crate alloc;
 
 use alloc::{boxed::Box, vec::Vec};
-use core::{any::Any, hash::Hash};
+use core::{
+    any::Any,
+    fmt::{Debug, Display, Formatter},
+    hash::Hash,
+};
 
 use hashbrown::{HashMap, HashSet};
 
@@ -73,8 +77,8 @@ pub enum MachineError {
     StateInvalid,
 }
 
-impl core::fmt::Display for MachineError {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+impl Display for MachineError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
         match self {
             MachineError::EventInvalid => write!(
                 f,
@@ -322,6 +326,18 @@ where
     /// Create a default machine, using `S::default()` as the initial state.
     fn default() -> Self {
         Machine::new(S::default())
+    }
+}
+
+impl<S: Debug + Eq + Hash + Clone, E: Debug + Eq + Hash + Clone> Debug
+    for Machine<S, E>
+{
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Machine")
+            .field("state", &self.state)
+            .field("events", &self.transitions.keys().collect::<Vec<_>>())
+            .field("callbacks", &self.callbacks.len())
+            .finish()
     }
 }
 
