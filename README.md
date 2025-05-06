@@ -14,18 +14,18 @@ No dependencies, `no_std`, arbitrary state types, events, and callbacks. The API
 is intentionally small and is planned to remain as such. They are state
 machines, and that's it.
 
-If you need to implement an FSM for a piece of application logic and don’t have
-time to learn a DSL or design many types, `nanomachine` lets you get the job
-done with a few lines.
+If an FSM needs to be implemented for a piece of application logic and there is
+no time to learn a DSL or design many types, `nanomachine` can get the job done
+with a few lines.
 
-If you need guarded transitions or hierarchical states this crate is not for
-you.
+If guarded transitions or hierarchical states are needed, this crate is not the
+right tool.
 
 Note that machines are not thread-safe; this may change in future versions.
 
 ## Installation
 
-Add this crate to your `Cargo.toml`:
+Add this crate to the `Cargo.toml`:
 
 ```toml
 [dependencies]
@@ -67,14 +67,27 @@ nano.trigger(&"turn knob");
 assert_eq!(*nano.state(), "locked");
 
 // Add inputs to transitions.
-nano.on_enter_with("unlocked", |_, amount: &u32| {
-    println!("Unlocked after {} cents", amount);
+nano.on_enter_with("unlocked", |_, payload: &u32| {
+    println!("Unlocked after {} cents", payload);
 });
-
-nano.trigger_with(&"insert coin", &50u32); // <- prints: Unlocked after 50 cents
 ```
 
-The state can be anything that implements `Eq + Hash + Clone`:
+A payload is an arbitrary value we can pass to callbacks when triggering an
+event. Payloads can be of any type:
+
+```rust
+nano.on_enter_with("locked", |_, payload: &(&str, f32)| {
+    println!("Locked with a fancy payload: {:?}", payload);
+});
+
+nano.trigger_with(&"turn knob", &("fancy", 42f32)); // <- prints: Unlocked after 50 cents
+```
+
+Note that if we hadn't defined the float as a `42f32`, but as `42.`, we couldn't
+know that it matches a type of `(&str, f32)`, so the callback wouldn't have been
+called.
+
+The state can be any type that implements `Eq + Hash + Clone`:
 
 ```rust
 use nanomachine::Machine;
@@ -106,14 +119,15 @@ assert_eq!(*nano.state(), State::Unlocked);
 nano.trigger(&Event::TurnKnob);
 assert_eq!(*nano.state(), State::Locked);
 
-nano.on_enter_with(State::Unlocked, |_, amount: &u32| {
-    println!("Unlocked after {} cents", amount);
+nano.on_enter_with(State::Unlocked, |_, payload: &u32| {
+    println!("Unlocked after {} cents", payload);
 });
 
 nano.trigger_with(&Event::InsertCoin, &50u32);
 ```
 
-You can check if an event will trigger a change in state:
+If the event fired does not trigger a transition, then an error with an
+appropriate reason is returned.
 
 ```rust
 nano.state(); // <- Locked
@@ -122,7 +136,7 @@ nano.trigger(&Event::TurnKnob);   // <- Err(MachineError::StateInvalid)
 nano.trigger(&Event::Insertcoin); // <- Unlocked
 ```
 
-You can also list all possible events or states:
+We can also list all possible events or states:
 
 ```rust
 // All possible states.
@@ -137,7 +151,7 @@ nano.events().collect::<Vec<_>>(); // vec![&InsertCoin, &TurnKnob]
 
 ### Callbacks
 
-You can register callbacks with no payload that get triggered when entering a
+We can register callbacks with no payload that get triggered when entering a
 given state:
 
 ```rust
@@ -149,8 +163,8 @@ nano.on_enter(State::Unlocked, |event| {
 Additionally, it can be useful to register callbacks that expect some payload:
 
 ```rust
-nano.on_enter_with(State::Unlocked, |_, amount: &u32| {
-    println!("Unlocked after {} cents", amount);
+nano.on_enter_with(State::Unlocked, |_, payload: &u32| {
+    println!("Unlocked after {} cents", payload);
 });
 ```
 
@@ -163,8 +177,8 @@ nano.on_transition(|e| {
 });
 
 // Prints after every `trigger_with` call with payload of the appropriate type.
-nano.on_transition_with(|e, amount: &u32| {
-    println!("Global - saw {} cents via {:?}", amount, e);
+nano.on_transition_with(|e, payload: &u32| {
+    println!("Global - saw {} cents via {:?}", payload, e);
 });
 ```
 
@@ -177,10 +191,12 @@ triggered. Global callbacks with no payload *always* get triggered.
 ```rust
 // Always triggered.
 nano.on_transition(|e| println!("Global - event {:?}", e));
+
 // Triggered on every transition when the payload is a `u32`.
-nano.on_transition_with(|e, amount: &u32| {
-    println!("Global - saw {} cents via {:?}", amount, e);
+nano.on_transition_with(|e, payload: &u32| {
+    println!("Global - saw {} cents via {:?}", payload, e);
 });
+
 // Triggered on every transition when the payload is a `String`.
 nano.on_transition_with(|e, msg: &String| {
     println!("Global - saw \"{}\" via {:?}", msg, e);
