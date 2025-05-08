@@ -53,50 +53,21 @@
 #![warn(clippy::perf, clippy::pedantic, missing_docs)]
 #![no_std]
 
+mod error;
+pub use error::MachineError;
+
 extern crate alloc;
 
-use alloc::{boxed::Box, vec::Vec};
-use core::{
-    any::Any,
-    fmt::{Debug, Display, Formatter},
-    hash::Hash,
-};
+use alloc::{rc::Rc, vec::Vec};
+use core::{any::Any, fmt::Debug, hash::Hash};
 
 use hashbrown::{HashMap, HashSet};
-
-/// Errors that can occur when triggering events on a [`Machine`].
-///
-/// This error type is returned by [`Machine::trigger`] and
-/// [`Machine::trigger_with`] to indicate invalid operations.
-#[derive(Debug, Clone, Eq, Hash, PartialEq)]
-pub enum MachineError {
-    /// The specified event is not defined in the state machine.
-    EventInvalid,
-    /// The specified event is defined for this machine, but not valid from the
-    /// current state.
-    StateInvalid,
-}
-
-impl Display for MachineError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
-        match self {
-            MachineError::EventInvalid => write!(
-                f,
-                "The specified event is not defined in this state machine"
-            ),
-            MachineError::StateInvalid => {
-                write!(f, "The event is not valid for the current state")
-            }
-        }
-    }
-}
-
-impl core::error::Error for MachineError {}
 
 /// A specialized `Result` type for operations on a [`Machine`].
 ///
 /// This is an alias for `core::result::Result<T, MachineError>`.
 pub type MachineResult<T> = core::result::Result<T, MachineError>;
+
 /// A trigger key for callbacks, either targeting a specific state or any state.
 #[derive(Debug, Clone, Eq, Hash, PartialEq)]
 enum Trigger<S> {
@@ -107,13 +78,14 @@ enum Trigger<S> {
 }
 
 /// Any `Fn` that takes an event and some arbitrary payload as input.
-type Callback<E> = Box<dyn Fn(E, &dyn Any)>;
+type Callback<E> = Rc<dyn Fn(E, &dyn Any)>;
 
 /// A generic finite state machine.
 ///
 /// # Type Parameters
 /// - `S`: The state type. Must implement `Eq + Hash + Clone`.
 /// - `E`: The event type. Must implement `Eq + Hash + Clone`.
+#[derive(Clone)]
 pub struct Machine<S, E> {
     state: S,
     transitions: HashMap<E, HashMap<S, S>>,
@@ -203,7 +175,7 @@ where
         P: 'static,
         F: Fn(E, &P) + 'static,
     {
-        Box::new(move |evt, payload| {
+        Rc::new(move |evt, payload| {
             if let Some(p) = payload.downcast_ref::<P>() {
                 callback(evt, p);
             }
@@ -215,7 +187,7 @@ where
     where
         F: Fn(E) + 'static,
     {
-        let callback: Callback<E> = Box::new(move |evt, _payload| {
+        let callback: Callback<E> = Rc::new(move |evt, _payload| {
             callback(evt);
         });
         self.callbacks.entry(Trigger::State(state)).or_default().push(callback);
@@ -242,7 +214,7 @@ where
     where
         F: Fn(E) + 'static + Clone,
     {
-        let callback: Callback<E> = Box::new(move |evt, _payload| {
+        let callback: Callback<E> = Rc::new(move |evt, _payload| {
             callback(evt);
         });
         self.callbacks.entry(Trigger::AnyState).or_default().push(callback);

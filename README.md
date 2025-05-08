@@ -21,8 +21,6 @@ with a few lines.
 If guarded transitions or hierarchical states are needed, this crate is not the
 right tool.
 
-Note that machines are not thread-safe; this may change in future versions.
-
 ## Installation
 
 Add this crate to the `Cargo.toml`:
@@ -225,6 +223,13 @@ nano.trigger_with(&"insert coin", &50u32).unwrap();
 ## Examples
 
 You can find more examples in the [examples directory][./examples].
+
+## Trade-offs
+
+- Note that machines are not thread-safe; this may change in future versions.
+- Note that although you can clone `Machine`s, if your machine has callbacks
+that capture variables using interior mutability, mutating one variable will be
+reflected across all closures.
 
 ## Contributing
 
